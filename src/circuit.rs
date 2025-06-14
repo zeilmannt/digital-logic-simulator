@@ -77,7 +77,7 @@ impl Circuit {
     pub fn evaluate(&mut self) {
         // Step 1: Apply primary inputs to the first few gates
         for (i, &input) in self.primary_inputs.iter().enumerate() {
-            if i < self.gates.len() {
+            if i < self.gates[0].inputs.len() {
                 self.gates[0].inputs[i] = input;
             }
         }
