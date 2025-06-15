@@ -1,13 +1,11 @@
+use strum_macros::EnumIter;
+
 /// Represents the different types of logic gates supported by the simulator.
-#[derive(Debug, Clone, Copy)]
+#[derive(EnumIter, Debug, Clone, Copy)]
 pub enum GateType {
-    /// Logical AND gate.
     And,
-    /// Logical OR gate.
     Or,
-    /// Logical NOT gate.
     Not,
-    /// Logical XOR (exclusive or) gate.
     Xor,
 }
 

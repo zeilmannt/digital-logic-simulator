@@ -1,7 +1,7 @@
 
 use eframe::egui::{self, CentralPanel, SidePanel, Pos2, Rect, Sense, Vec2, Color32, Stroke};
 use egui::vec2;
-//use egui::{Pos2, vec2, Color32, Rect};
+use strum::IntoEnumIterator;
 use crate::circuit::Circuit;
 use crate::gate::GateType;
 
@@ -55,7 +55,7 @@ impl CircuitEditor {
         SidePanel::left("gate_selection_panel").show(ctx, |ui| {
             ui.heading("Select Gate Type");
 
-            for &gate_type in &[GateType::And, GateType::Or, GateType::Not, GateType::Xor] {
+            for gate_type in GateType::iter() {
                 if ui.button(format!("{:?}", gate_type)).clicked() {
                     self.selected_gate = Some(gate_type);
                 }
@@ -70,13 +70,19 @@ impl CircuitEditor {
 
         // Main panel to place gates
         CentralPanel::default().show(ctx, |ui| {
+            let canvas_size = ui.available_size();
+            let response = ui.allocate_rect(
+                Rect::from_min_size(ui.min_rect().min, canvas_size),
+                Sense::click(),
+            );
+            let canvas_rect = response.rect;
+
             let painter = ui.painter();
 
             // Draw all gates
             for gate in &self.gate_widgets {
                 let rect = Rect::from_min_size(gate.position, vec2(80.0, 50.0));
-                let color = Color32::from_rgb(200, 200, 250);
-                painter.rect_filled(rect, 5.0, color);
+                painter.rect_filled(rect, 5.0, Color32::from_rgb(200, 200, 250));
                 painter.text(
                     gate.position + vec2(10.0, 10.0),
                     egui::Align2::LEFT_TOP,
@@ -86,13 +92,26 @@ impl CircuitEditor {
                 );
             }
 
-            // If canvas clicked, add selected gate
-            if ui.ctx().input(|i| i.pointer.primary_clicked()) {
-                if let (Some(pos), Some(gate_type)) = (
-                    ui.ctx().input(|i| i.pointer.interact_pos()),
-                    self.selected_gate,
-                ) {
-                    self.add_gate(gate_type, pos);
+            // Helper: check if pos overlaps existing gates
+            fn is_position_free(gates: &[GateWidget], pos: Pos2) -> bool {
+                let new_rect = Rect::from_min_size(pos, vec2(80.0, 50.0));
+                !gates.iter().any(|gate| {
+                    let gate_rect = Rect::from_min_size(gate.position, vec2(80.0, 50.0));
+                    gate_rect.intersects(new_rect)
+                })
+            }
+
+            // Add gate if canvas clicked, click inside canvas, and no overlap
+            if ui.input(|i| i.pointer.any_click()) {
+                if ui.rect_contains_pointer(canvas_rect) {
+                    if let (Some(pos), Some(gate_type)) = (
+                        ui.ctx().input(|i| i.pointer.interact_pos()),
+                        self.selected_gate,
+                    ) {
+                        if is_position_free(&self.gate_widgets, pos) {
+                            self.add_gate(gate_type, pos);
+                        }
+                    }
                 }
             }
         });
