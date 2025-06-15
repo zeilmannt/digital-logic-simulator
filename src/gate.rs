@@ -7,6 +7,7 @@ pub enum GateType {
     Or,
     Not,
     Xor,
+    Input,
 }
 
 /// A logic gate with a specific type, input signals, and an output signal.
@@ -55,6 +56,7 @@ impl Gate {
             GateType::Or => self.inputs.iter().any(|&b| b),
             GateType::Xor => self.inputs.iter().fold(false, |a, b| a ^ b),
             GateType::Not => !self.inputs[0],
+            GateType::Input => self.inputs[0],
         };
     }
 }

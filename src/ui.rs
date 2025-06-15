@@ -18,6 +18,7 @@ pub struct GateWidget {
     pub id: usize,
     pub gate_type: GateType,
     pub position: Pos2,
+    pub input_state: Option<bool>,
 }
 
 pub struct CircuitEditor {
@@ -38,16 +39,21 @@ impl CircuitEditor {
     pub fn add_gate(&mut self, gate_type: GateType, position: Pos2) {
         let id = self.circuit.add_gate(gate_type, match gate_type {
             GateType::Not => 1,
+            GateType::Input => 0,  // Inputs have 0 inputs
             _ => 2,
         });
+
+        let input_state = if gate_type == GateType::Input { Some(false) } else { None };
 
         self.gate_widgets.push(GateWidget {
             id,
             gate_type,
             position,
+            input_state,
         });
     }
-    
+
+
     fn is_position_free(&self, pos: Pos2) -> bool {
         let new_rect = Rect::from_min_size(pos, vec2(80.0, 50.0));
         !self.gate_widgets.iter().any(|gate| {
@@ -107,9 +113,18 @@ impl CircuitEditor {
             let painter = ui.painter();
 
             // Draw all gates
-            for gate in &self.gate_widgets {
+            for gate in &mut self.gate_widgets {
                 let rect = Rect::from_min_size(gate.position, vec2(80.0, 50.0));
-                painter.rect_filled(rect, 5.0, Color32::from_rgb(200, 200, 250));
+                let color = match gate.gate_type {
+                    GateType::Input => if gate.input_state.unwrap_or(false) {
+                        Color32::GREEN
+                    } else {
+                        Color32::RED
+                    },
+                    _ => Color32::from_rgb(200, 200, 250),
+                };
+
+                painter.rect_filled(rect, 5.0, color);
                 painter.text(
                     gate.position + vec2(10.0, 10.0),
                     egui::Align2::LEFT_TOP,
@@ -117,6 +132,23 @@ impl CircuitEditor {
                     egui::TextStyle::Body.resolve(ui.style()),
                     Color32::BLACK,
                 );
+            }
+
+            // Detect clicks on input gates to toggle their state
+            let pointer_pos = ui.ctx().input(|i| i.pointer.interact_pos());
+
+            if let Some(pos) = pointer_pos {
+                if ui.input(|i| i.pointer.any_click()) {
+                    for gate in &mut self.gate_widgets {
+                        let rect = Rect::from_min_size(gate.position, vec2(80.0, 50.0));
+                        if rect.contains(pos) {
+                            if gate.gate_type == GateType::Input {
+                                gate.input_state = Some(!gate.input_state.unwrap_or(false));
+                            }
+                            // You could handle selection/dragging for other gates here
+                        }
+                    }
+                }
             }
 
             // Add gate if canvas clicked, click inside canvas, and no overlap
