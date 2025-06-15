@@ -1,7 +1,7 @@
 use strum_macros::EnumIter;
 
 /// Represents the different types of logic gates supported by the simulator.
-#[derive(EnumIter, Debug, Clone, Copy)]
+#[derive(EnumIter, PartialEq, Debug, Clone, Copy)]
 pub enum GateType {
     And,
     Or,
