@@ -93,7 +93,6 @@ impl CircuitEditor {
             }
         });
 
-        // Main canvas panel
         CentralPanel::default().show(ctx, |ui| {
             let canvas_size = ui.available_size();
             let response = ui.allocate_rect(
@@ -101,7 +100,7 @@ impl CircuitEditor {
                 Sense::click(),
             );
 
-            // Allocate toggle buttons for Input gates, store their responses and rects
+            // Allocate toggle buttons for Input gates
             let mut toggle_responses = Vec::new();
             for gate in &mut self.gate_widgets {
                 if gate.gate_type == GateType::Input {
@@ -111,37 +110,14 @@ impl CircuitEditor {
                 }
             }
 
-            let painter = ui.painter();
-
-            // Constants for drawing pins
             let gate_size = vec2(80.0, 50.0);
             let pin_radius = 6.0;
 
-            // Draw all gates
+            // First allocate all clickable input/output pin rectangles (to avoid borrow conflicts)
+            let mut input_pin_clicks = Vec::new();
+            let mut output_pin_clicks = Vec::new();
+
             for gate in &self.gate_widgets {
-                let rect = Rect::from_min_size(gate.position, gate_size);
-                let is_input = gate.gate_type == GateType::Input;
-
-                // Filled rectangle for the gate
-                painter.rect_filled(
-                    rect,
-                    5.0,
-                    if is_input { Color32::LIGHT_GREEN } else { Color32::LIGHT_BLUE },
-                );
-
-                // Outline for debugging
-                painter.rect_stroke(rect, 5.0, Stroke::new(1.0, Color32::BLACK));
-
-                // Draw gate type text
-                painter.text(
-                    gate.position + vec2(10.0, 10.0),
-                    egui::Align2::LEFT_TOP,
-                    format!("{:?}", gate.gate_type),
-                    egui::TextStyle::Body.resolve(ui.style()),
-                    Color32::BLACK,
-                );
-
-                // Draw input pins on left side
                 let input_count = match gate.gate_type {
                     GateType::Not => 1,
                     GateType::Input => 0,
@@ -152,23 +128,66 @@ impl CircuitEditor {
                 for i in 0..input_count {
                     let y = gate.position.y + input_spacing * (i as f32 + 1.0);
                     let input_pos = Pos2::new(gate.position.x, y);
-                    // Determine input signal from circuit connections
-                    let input_signal = {
-                        // Find the connection feeding this input
-                        let connections = self.circuit.connections(); // Bind to a variable to keep it alive
-                        let conn = connections.iter().find(|&&(_, to_id, input_idx)| {
-                            to_id == gate.id && input_idx == i
-                        });
-                        if let Some((from_id, _, _)) = conn {
-                            self.circuit.get_output(*from_id)
-                        } else {
-                            false
-                        }
+                    let input_rect = Rect::from_center_size(input_pos, vec2(pin_radius * 2.0, pin_radius * 2.0));
+                    let response = ui.allocate_rect(input_rect, Sense::click());
+                    input_pin_clicks.push((gate.id, i, response));
+                }
 
+                let output_pos = Pos2::new(gate.position.x + gate_size.x, gate.position.y + gate_size.y / 2.0);
+                let output_rect = Rect::from_center_size(output_pos, vec2(pin_radius * 2.0, pin_radius * 2.0));
+                let response = ui.allocate_rect(output_rect, Sense::click());
+                output_pin_clicks.push((gate.id, response));
+            }
+
+            // Now get the painter and do all drawing
+            let painter = ui.painter();
+
+            // Draw all gates
+            for gate in &self.gate_widgets {
+                let rect = Rect::from_min_size(gate.position, gate_size);
+                let is_input = gate.gate_type == GateType::Input;
+
+                painter.rect_filled(
+                    rect,
+                    5.0,
+                    if is_input { Color32::LIGHT_GREEN } else { Color32::LIGHT_BLUE },
+                );
+
+                painter.rect_stroke(rect, 5.0, Stroke::new(1.0, Color32::BLACK));
+
+                painter.text(
+                    gate.position + vec2(10.0, 10.0),
+                    egui::Align2::LEFT_TOP,
+                    format!("{:?}", gate.gate_type),
+                    egui::TextStyle::Body.resolve(ui.style()),
+                    Color32::BLACK,
+                );
+
+                // Draw input pins with color based on signal
+                let input_count = match gate.gate_type {
+                    GateType::Not => 1,
+                    GateType::Input => 0,
+                    _ => 2,
+                };
+                let input_spacing = gate_size.y / (input_count as f32 + 1.0);
+
+                for i in 0..input_count {
+                    let y = gate.position.y + input_spacing * (i as f32 + 1.0);
+                    let input_pos = Pos2::new(gate.position.x, y);
+                    // Get input signal from circuit connections
+                    let connections = self.circuit.connections();
+                    let conn = connections.iter().find(|&&(_, to_id, input_idx)| {
+                        to_id == gate.id && input_idx == i
+                    });
+                    let input_signal = if let Some((from_id, _, _)) = conn {
+                        self.circuit.get_output(*from_id)
+                    } else {
+                        false
                     };
+
                     let color = if input_signal { Color32::GREEN } else { Color32::RED };
                     painter.circle_filled(input_pos, pin_radius, color);
-                    // Label inputs
+
                     painter.text(
                         input_pos - vec2(10.0, 0.0),
                         egui::Align2::RIGHT_CENTER,
@@ -178,7 +197,7 @@ impl CircuitEditor {
                     );
                 }
 
-                // Draw output pin on right side (center vertically)
+                // Draw output pin
                 let output_pos = Pos2::new(gate.position.x + gate_size.x, gate.position.y + gate_size.y / 2.0);
                 let output_signal = self.circuit.get_output(gate.id);
                 let output_color = if output_signal { Color32::GREEN } else { Color32::RED };
@@ -190,6 +209,28 @@ impl CircuitEditor {
                     egui::TextStyle::Small.resolve(ui.style()),
                     Color32::BLACK,
                 );
+            }
+
+            // Draw connection lines
+            for (from_id, to_id, input_index) in self.circuit.connections() {
+                let from_gate = self.gate_widgets.iter().find(|g| g.id == from_id);
+                let to_gate = self.gate_widgets.iter().find(|g| g.id == to_id);
+
+                if let (Some(from), Some(to)) = (from_gate, to_gate) {
+                    let from_pos = from.position + vec2(gate_size.x, gate_size.y / 2.0);
+                    let input_count = match to.gate_type {
+                        GateType::Not => 1,
+                        GateType::Input => 0,
+                        _ => 2,
+                    };
+                    let input_spacing = gate_size.y / (input_count as f32 + 1.0);
+                    let to_pos = to.position + vec2(0.0, input_spacing * (input_index as f32 + 1.0));
+
+                    let output_value = self.circuit.get_output(from_id);
+                    let color = if output_value { Color32::GREEN } else { Color32::RED };
+
+                    painter.line_segment([from_pos, to_pos], Stroke::new(2.0, color));
+                }
             }
 
             // Handle toggle button clicks and draw toggles
@@ -214,30 +255,25 @@ impl CircuitEditor {
                 );
             }
 
-            // Draw connection lines
-            for (from_id, to_id, input_index) in self.circuit.connections() {
-                let from_gate = self.gate_widgets.iter().find(|g| g.id == from_id);
-                let to_gate = self.gate_widgets.iter().find(|g| g.id == to_id);
-
-                if let (Some(from), Some(to)) = (from_gate, to_gate) {
-                    let from_pos = from.position + vec2(gate_size.x, gate_size.y / 2.0); // Right edge middle
-                    // Inputs spaced vertically by input_spacing to align with pins
-                    let input_count = match to.gate_type {
-                        GateType::Not => 1,
-                        GateType::Input => 0,
-                        _ => 2,
-                    };
-                    let input_spacing = gate_size.y / (input_count as f32 + 1.0);
-                    let to_pos = to.position + vec2(0.0, input_spacing * (input_index as f32 + 1.0));
-
-                    let output_value = self.circuit.get_output(from_id);
-                    let color = if output_value { Color32::GREEN } else { Color32::RED };
-
-                    painter.line_segment([from_pos, to_pos], Stroke::new(2.0, color));
+            // Handle clicks on input pins to create connections
+            for (to_id, input_idx, response) in input_pin_clicks {
+                if response.clicked() {
+                    if let Some(from_id) = self.connect_from {
+                        self.circuit.connect(from_id, to_id, input_idx);
+                        self.connect_from = None;
+                        self.circuit.evaluate();
+                    }
                 }
             }
 
-            // Toggle input gates with click on gate rectangle area as fallback
+            // Handle clicks on output pins to start connection
+            for (from_id, response) in output_pin_clicks {
+                if response.clicked() {
+                    self.connect_from = Some(from_id);
+                }
+            }
+
+            // Toggle input gates with click on gate rectangle as fallback
             let pointer_pos = ui.ctx().input(|i| i.pointer.interact_pos());
 
             if let Some(pos) = pointer_pos {
@@ -253,10 +289,9 @@ impl CircuitEditor {
                 }
             }
 
-            // Handle gate placement or connection
+            // Handle gate placement or connection on empty canvas
             if response.clicked() {
                 if let Some(click_pos) = response.interact_pointer_pos() {
-                    // Adjust position so that gate is centered at click position
                     let adjusted_pos = click_pos - vec2(gate_size.x / 2.0, gate_size.y / 2.0);
 
                     let clicked_gate = self.gate_widgets.iter().find(|g| {
@@ -265,8 +300,9 @@ impl CircuitEditor {
                     });
 
                     if let Some(gate) = clicked_gate {
-                        if let Some(from_id) = self.connect_from {
-                            self.circuit.connect(from_id, gate.id, 0);
+                        if self.connect_from.is_some() {
+                            // clicking a gate's body after selecting a from gate connects to input 0
+                            self.circuit.connect(self.connect_from.unwrap(), gate.id, 0);
                             self.connect_from = None;
                             self.circuit.evaluate();
                         } else {
