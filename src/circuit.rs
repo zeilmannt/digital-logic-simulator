@@ -67,17 +67,6 @@ impl Circuit {
         self.gates.len() - 1
     }
 
-    /// Adds a connection from one gate's output to another gate's input.
-    ///
-    /// # Arguments
-    ///
-    /// * `from` - The source gate ID (output).
-    /// * `to` - The target gate ID (input).
-    /// * `input_index` - The index of the input on the target gate.
-    pub fn add_connection(&mut self, from: GateId, to: GateId, input_index: usize) {
-        self.connections.push(Connection { from, to, input_index });
-    }
-
     /// Evaluate the entire circuit by evaluating all gates in order
     pub fn evaluate(&mut self) {
         let mut cache = HashMap::new();
