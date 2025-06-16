@@ -7,13 +7,6 @@ use crate::gate::GateType;
 pub type GateId = usize;
 
 #[derive(Debug)]
-pub struct PlacedGate {
-    pub id: GateId,
-    pub gate_type: GateType,
-    pub position: Pos2,
-}
-
-#[derive(Debug)]
 pub struct GateWidget {
     pub id: usize,
     pub gate_type: GateType,
@@ -113,7 +106,7 @@ impl CircuitEditor {
             let gate_size = vec2(80.0, 50.0);
             let pin_radius = 6.0;
 
-            // First allocate all clickable input/output pin rectangles (to avoid borrow conflicts)
+            // First, allocate all clickable input/output pin rectangles (to avoid borrow conflicts)
             let mut input_pin_clicks = Vec::new();
             let mut output_pin_clicks = Vec::new();
 
@@ -266,7 +259,7 @@ impl CircuitEditor {
                 }
             }
 
-            // Handle clicks on output pins to start connection
+            // Handle clicks on output pins to start the connection
             for (from_id, response) in output_pin_clicks {
                 if response.clicked() {
                     self.connect_from = Some(from_id);
