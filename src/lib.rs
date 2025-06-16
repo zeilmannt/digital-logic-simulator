@@ -10,4 +10,5 @@
 //! - `connection`: Manages connections between gates in the circuit.
 pub mod gate;
 pub mod circuit;
-pub mod connection; // if you use this
+pub mod connection;
+pub mod ui;

@@ -1,5 +1,6 @@
 use crate::connection::{Connection, GateId};
 use crate::gate::{Gate, GateType};
+use std::collections::HashMap;
 
 /// Represents a digital logic circuit composed of gates, connections, and primary inputs.
 ///
@@ -25,6 +26,33 @@ impl Circuit {
         }
     }
 
+    /// Recursively evaluates the output of a gate
+    pub fn evaluate_gate(&self, gate_id: GateId, cache: &mut HashMap<GateId, bool>) -> bool {
+        if let Some(&cached_output) = cache.get(&gate_id) {
+            return cached_output;
+        }
+
+        let gate = &self.gates[gate_id];
+
+        // Input gates output is stored directly
+        if gate.gate_type == GateType::Input {
+            cache.insert(gate_id, gate.output);
+            return gate.output;
+        }
+
+        // Gather inputs by following connections
+        let mut inputs = vec![false; gate.input_count];
+        for conn in self.connections.iter().filter(|c| c.to == gate_id) {
+            inputs[conn.input_index] = self.evaluate_gate(conn.from, cache);
+        }
+
+        // Evaluate this gate with its input values
+        let output = gate.evaluate_with_inputs(&inputs);
+
+        cache.insert(gate_id, output);
+        output
+    }
+
     /// Adds a new gate of the specified type and input count to the circuit.
     ///
     /// Returns the `GateId` (index) of the newly added gate.
@@ -39,63 +67,22 @@ impl Circuit {
         self.gates.len() - 1
     }
 
-    /// Adds a connection from one gate's output to another gate's input.
-    ///
-    /// # Arguments
-    ///
-    /// * `from` - The source gate ID (output).
-    /// * `to` - The target gate ID (input).
-    /// * `input_index` - The index of the input on the target gate.
-    pub fn add_connection(&mut self, from: GateId, to: GateId, input_index: usize) {
-        self.connections.push(Connection { from, to, input_index });
-    }
-
-    /// Sets the external primary inputs of the circuit.
-    ///
-    /// These inputs typically represent switches or sensors feeding signals into the circuit.
-    ///
-    /// # Arguments
-    ///
-    /// * `inputs` - Vector of boolean input values.
-    pub fn set_primary_inputs(&mut self, inputs: Vec<bool>) {
-        self.primary_inputs = inputs;
-    }
-
-    /// Evaluates the entire circuit.
-    ///
-    /// This method:
-    /// 1. Applies primary inputs to the first gates’ inputs.
-    /// 2. Evaluates all gates.
-    /// 3. Propagates outputs through connections.
-    /// 4. Evaluates gates again to update outputs based on propagated signals.
-    ///
-    /// This simulates signal flow through the circuit until steady state.
-    ///
-    /// # Panics
-    ///
-    /// Panics if gate IDs in connections are invalid or input indices are out of range.
+    /// Evaluate the entire circuit by evaluating all gates in order
     pub fn evaluate(&mut self) {
-        // Step 1: Apply primary inputs to the first few gates
-        for (i, &input) in self.primary_inputs.iter().enumerate() {
-            if i < self.gates[0].inputs.len() {
-                self.gates[0].inputs[i] = input;
-            }
-        }
+        let mut cache = HashMap::new();
 
-        // Step 2: Evaluate gates once
-        for gate in self.gates.iter_mut() {
-            gate.evaluate();
+        for gate_id in 0..self.gates.len() {
+            let output = self.evaluate_gate(gate_id, &mut cache);
+            self.gates[gate_id].output = output;
         }
+    }
 
-        // Step 3: Propagate output to inputs of next gates
-        for conn in &self.connections {
-            let from_output = self.gates[conn.from].output;
-            self.gates[conn.to].inputs[conn.input_index] = from_output;
-        }
-
-        // Step 4: Evaluate gates again to update outputs with new inputs
-        for gate in self.gates.iter_mut() {
-            gate.evaluate();
+    /// Set the output value of an input gate
+    pub fn set_primary_input_value(&mut self, gate_id: GateId, value: bool) {
+        if self.gates[gate_id].gate_type == GateType::Input {
+            self.gates[gate_id].output = value;
+        } else {
+            panic!("Gate {} is not an input gate", gate_id);
         }
     }
 
@@ -115,4 +102,17 @@ impl Circuit {
     pub fn get_output(&self, gate_id: GateId) -> bool {
         self.gates[gate_id].output
     }
+
+    pub fn connect(&mut self, from: GateId, to: GateId, input_index: usize) {
+        self.connections.push(Connection {
+            from,
+            to,
+            input_index,
+        });
+    }
+
+    pub fn connections(&self) -> Vec<(GateId, GateId, usize)> {
+        self.connections.iter().map(|c| (c.from, c.to, c.input_index)).collect()
+    }
+
 }
